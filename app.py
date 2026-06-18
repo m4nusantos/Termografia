@@ -45,8 +45,8 @@ ACCEPTED_TYPES = ["jpg", "jpeg", "png", "bmp", "tif", "tiff"]
 # ==========================================================================  #
 REGIAO_PADRAO_X = 6        # %
 REGIAO_PADRAO_Y = 0        # %
-REGIAO_PADRAO_LARGURA = 12  # %
-REGIAO_PADRAO_ALTURA = 21   # %
+REGIAO_PADRAO_LARGURA = 21  # %
+REGIAO_PADRAO_ALTURA = 12   # %
 
 
 # --------------------------------------------------------------------------- #
