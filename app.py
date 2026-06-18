@@ -34,6 +34,20 @@ st.set_page_config(
 # Formatos de imagem aceitos.
 ACCEPTED_TYPES = ["jpg", "jpeg", "png", "bmp", "tif", "tiff"]
 
+# ==========================================================================  #
+# >>> REGIÃO PADRÃO DA TEMPERATURA <<<
+# Estes são os valores com que o app JÁ ABRE (em % da imagem). Mude estes 4
+# números para deixar o recorte certo das SUAS fotos pré-configurado.
+#   - X: distância da borda ESQUERDA (0 = encostado à esquerda)
+#   - Y: distância do TOPO          (0 = encostado em cima)
+#   - LARGURA e ALTURA: tamanho do retângulo
+# Você também pode ajustar tudo pelos controles da barra lateral durante o uso.
+# ==========================================================================  #
+REGIAO_PADRAO_X = 6        # %
+REGIAO_PADRAO_Y = 0        # %
+REGIAO_PADRAO_LARGURA = 21  # %
+REGIAO_PADRAO_ALTURA = 12   # %
+
 
 # --------------------------------------------------------------------------- #
 # Funções auxiliares de recorte
@@ -122,11 +136,11 @@ with st.sidebar:
         st.caption("Ajuste o retângulo (em % da imagem). O mesmo recorte vale para todas.")
         col_a, col_b = st.columns(2)
         with col_a:
-            x = st.slider("X (esquerda) %", 0, 100, 0)
-            w = st.slider("Largura %", 1, 100, 30)
+            x = st.slider("X (esquerda) %", 0, 100, REGIAO_PADRAO_X)
+            w = st.slider("Largura %", 1, 100, REGIAO_PADRAO_LARGURA)
         with col_b:
-            y = st.slider("Y (topo) %", 0, 100, 0)
-            h = st.slider("Altura %", 1, 100, 15)
+            y = st.slider("Y (topo) %", 0, 100, REGIAO_PADRAO_Y)
+            h = st.slider("Altura %", 1, 100, REGIAO_PADRAO_ALTURA)
         box_pct = (float(x), float(y), float(w), float(h))
 
     st.divider()
@@ -150,11 +164,23 @@ with st.sidebar:
 # --------------------------------------------------------------------------- #
 # Upload das imagens
 # --------------------------------------------------------------------------- #
+# Chave dinâmica do uploader: ao incrementá-la, o widget "esquece" os arquivos
+# enviados — é assim que o botão "Limpar" zera a seleção.
+if "uploader_key" not in st.session_state:
+    st.session_state["uploader_key"] = 0
+
 files = st.file_uploader(
     "📤 Selecione as imagens de termografia (pode selecionar várias de uma vez)",
     type=ACCEPTED_TYPES,
     accept_multiple_files=True,
+    key=f"uploader_{st.session_state['uploader_key']}",
 )
+
+# Botão para limpar as imagens e os resultados e iniciar uma nova leitura.
+if st.button("🗑️ Limpar imagens e resultados"):
+    st.session_state["uploader_key"] += 1
+    st.session_state.pop("resultados", None)
+    st.rerun()
 
 if not files:
     st.info(
@@ -179,7 +205,14 @@ if not use_full:
         st.image(draw_region(first_img, box_pct), caption="Região selecionada (vermelho)", use_container_width=True)
     with col2:
         st.image(crop_region(first_img, box_pct), caption="Recorte que será lido", use_container_width=True)
-    st.caption("Ajuste os controles na barra lateral até o retângulo cercar só o número.")
+
+    left, top, right, bottom = box_to_pixels(first_img, box_pct)
+    st.caption(
+        f"Ajuste os controles na barra lateral até o retângulo cercar só o número. "
+        f"Região na 1ª imagem ({first_img.width}×{first_img.height} px): "
+        f"x {left}→{right}, y {top}→{bottom}  ·  "
+        f"em %: X={box_pct[0]:.0f} · Y={box_pct[1]:.0f} · Largura={box_pct[2]:.0f} · Altura={box_pct[3]:.0f}"
+    )
 
 
 # --------------------------------------------------------------------------- #
