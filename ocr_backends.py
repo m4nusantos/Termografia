@@ -94,19 +94,28 @@ def preprocess(
     upscale: int = 3,
     binarize: bool = True,
     invert: bool = False,
+    border: int = 0,
+    target_height: int = 0,
 ) -> Image.Image:
     """Limpa a imagem para melhorar a taxa de acerto do OCR.
 
-    Passos: tons de cinza -> autocontraste -> ampliação -> binarização (Otsu).
-    A ``invert`` é útil porque termografia tanto pode ter texto claro em fundo
-    escuro quanto o contrário.
+    Passos: tons de cinza -> autocontraste -> ampliação -> binarização (Otsu)
+    -> borda. A ``invert`` é útil porque termografia tanto pode ter texto claro
+    em fundo escuro quanto o contrário. ``target_height`` garante uma altura
+    mínima do texto (o Tesseract acerta mais com letras grandes) e ``border``
+    adiciona uma margem em volta (o Tesseract também acerta mais com folga).
     """
     gray = ImageOps.grayscale(img)
     gray = ImageOps.autocontrast(gray)
 
-    if upscale > 1:
+    # Amplia: respeita o fator pedido, mas também garante uma altura mínima.
+    scale = max(1, upscale)
+    if target_height and gray.height:
+        needed = -(-target_height // gray.height)  # divisão arredondada p/ cima
+        scale = max(scale, needed)
+    if scale > 1:
         gray = gray.resize(
-            (gray.width * upscale, gray.height * upscale), Image.LANCZOS
+            (gray.width * scale, gray.height * scale), Image.LANCZOS
         )
 
     if binarize:
@@ -115,11 +124,16 @@ def preprocess(
         bw = (arr > t).astype(np.uint8) * 255
         if invert:
             bw = 255 - bw
-        return Image.fromarray(bw)
+        out = Image.fromarray(bw)
+        # Texto preto em fundo branco (ou o inverso): a borda acompanha o fundo.
+        fill = 0 if invert else 255
+    else:
+        out = ImageOps.invert(gray) if invert else gray
+        fill = 0 if invert else 255
 
-    if invert:
-        return ImageOps.invert(gray)
-    return gray
+    if border > 0:
+        out = ImageOps.expand(out, border=border, fill=fill)
+    return out
 
 
 # --------------------------------------------------------------------------- #
@@ -164,14 +178,27 @@ def run_ocr(img: Image.Image, backend: str, psm: int = 7) -> str:
 # --------------------------------------------------------------------------- #
 # Interpretação do texto -> número de temperatura
 # --------------------------------------------------------------------------- #
-def parse_temperatures(text: str) -> list[float]:
-    """Extrai todos os números de temperatura plausíveis do texto do OCR."""
+def parse_temperatures(
+    text: str,
+    min_val: float | None = None,
+    max_val: float | None = None,
+) -> list[float]:
+    """Extrai os números de temperatura plausíveis do texto do OCR.
+
+    Se ``min_val``/``max_val`` forem informados, descarta valores fora da faixa
+    (ajuda a ignorar ruído do OCR, ex.: ``365`` quando você sabe que é ~36,5).
+    """
     values: list[float] = []
     for raw in _TEMP_RE.findall(text.replace(" ", "")):
         try:
-            values.append(float(raw.replace(",", ".")))
+            v = float(raw.replace(",", "."))
         except ValueError:
             continue
+        if min_val is not None and v < min_val:
+            continue
+        if max_val is not None and v > max_val:
+            continue
+        values.append(v)
     return values
 
 
@@ -181,20 +208,43 @@ def extract_temperature(
     psm: int = 7,
     upscale: int = 3,
     try_both_polarities: bool = True,
+    target_height: int = 300,
+    min_val: float | None = None,
+    max_val: float | None = None,
 ) -> tuple[str, list[float]]:
     """Roda o pipeline completo em UMA imagem (já recortada na região do número).
 
-    Retorna ``(texto_bruto_do_ocr, lista_de_valores)``. Tenta as duas
-    polaridades (texto claro/escuro) e devolve a primeira que produzir números.
+    Retorna ``(texto_bruto_do_ocr, lista_de_valores)``. Para ser robusto, tenta
+    várias combinações até achar um número: polaridade (texto claro/escuro) x
+    modos de segmentação do Tesseract. A imagem mais fácil é resolvida na 1ª
+    tentativa; só as difíceis passam pelas demais (mantém o lote rápido).
     """
     polarities = [False, True] if try_both_polarities else [False]
+
+    # Ordem de modos de leitura a tentar (começa pelo escolhido pelo usuário).
+    if backend == "EasyOCR":
+        psm_list = [psm]  # EasyOCR ignora PSM; basta 1 tentativa por variante.
+    else:
+        psm_list = []
+        for p in [psm, 7, 8, 6, 13]:
+            if p not in psm_list:
+                psm_list.append(p)
+
     best_text = ""
     for invert in polarities:
-        proc = preprocess(img, upscale=upscale, binarize=True, invert=invert)
-        text = run_ocr(proc, backend, psm=psm).strip()
-        values = parse_temperatures(text)
-        if values:
-            return text, values
-        if not best_text:
-            best_text = text
+        proc = preprocess(
+            img,
+            upscale=upscale,
+            binarize=True,
+            invert=invert,
+            border=20,
+            target_height=target_height,
+        )
+        for p in psm_list:
+            text = run_ocr(proc, backend, psm=p).strip()
+            values = parse_temperatures(text, min_val=min_val, max_val=max_val)
+            if values:
+                return text, values
+            if not best_text:
+                best_text = text
     return best_text, []
