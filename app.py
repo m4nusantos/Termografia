@@ -31,6 +31,45 @@ st.set_page_config(
     layout="wide",
 )
 
+# --------------------------------------------------------------------------- #
+# Acesso restrito (senha única)
+# --------------------------------------------------------------------------- #
+import hmac
+
+def checar_senha() -> bool:
+    """Mostra a tela de login e só libera o app com a senha correta."""
+    if st.session_state.get("acesso_liberado"):
+        return True
+
+    senha_correta = st.secrets.get("APP_PASSWORD")
+    if not senha_correta:
+        st.title("🔒 Acesso restrito")
+        st.error(
+            "A senha ainda não foi configurada. Crie o arquivo "
+            "`.streamlit/secrets.toml` com a linha:\n\n"
+            "`APP_PASSWORD = \"suaSenha\"`"
+        )
+        return False
+
+    st.title("🔒 Acesso restrito")
+    st.caption("Informe a senha para continuar.")
+    with st.form("login"):
+        senha = st.text_input("Senha", type="password")
+        entrar = st.form_submit_button("Entrar")
+
+    if entrar:
+        if hmac.compare_digest(senha, str(senha_correta)):
+            st.session_state["acesso_liberado"] = True
+            st.rerun()
+        else:
+            st.error("Senha incorreta.")
+    return False
+
+
+# Trava: nada do app aparece sem a senha certa.
+if not checar_senha():
+    st.stop()
+
 # Formatos de imagem aceitos.
 ACCEPTED_TYPES = ["jpg", "jpeg", "png", "bmp", "tif", "tiff"]
 
