@@ -32,10 +32,6 @@ st.set_page_config(
 )
 
 
-# Trava: nada do app aparece sem a senha certa.
-if not checar_senha():
-    st.stop()
-
 # Formatos de imagem aceitos.
 ACCEPTED_TYPES = ["jpg", "jpeg", "png", "bmp", "tif", "tiff"]
 
