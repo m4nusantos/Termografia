@@ -43,10 +43,10 @@ ACCEPTED_TYPES = ["jpg", "jpeg", "png", "bmp", "tif", "tiff"]
 #   - LARGURA e ALTURA: tamanho do retângulo
 # Você também pode ajustar tudo pelos controles da barra lateral durante o uso.
 # ==========================================================================  #
-REGIAO_PADRAO_X = 0        # %
+REGIAO_PADRAO_X = 6        # %
 REGIAO_PADRAO_Y = 0        # %
-REGIAO_PADRAO_LARGURA = 30  # %
-REGIAO_PADRAO_ALTURA = 15   # %
+REGIAO_PADRAO_LARGURA = 12  # %
+REGIAO_PADRAO_ALTURA = 21   # %
 
 
 # --------------------------------------------------------------------------- #
