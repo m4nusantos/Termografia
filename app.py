@@ -43,10 +43,10 @@ ACCEPTED_TYPES = ["jpg", "jpeg", "png", "bmp", "tif", "tiff"]
 #   - LARGURA e ALTURA: tamanho do retângulo
 # Você também pode ajustar tudo pelos controles da barra lateral durante o uso.
 # ==========================================================================  #
-REGIAO_PADRAO_X = 6        # %
+REGIAO_PADRAO_X = 0        # %
 REGIAO_PADRAO_Y = 0        # %
-REGIAO_PADRAO_LARGURA = 21  # %
-REGIAO_PADRAO_ALTURA = 12   # %
+REGIAO_PADRAO_LARGURA = 30  # %
+REGIAO_PADRAO_ALTURA = 15   # %
 
 
 # --------------------------------------------------------------------------- #
@@ -76,6 +76,12 @@ def draw_region(img: Image.Image, box_pct) -> Image.Image:
 
 def crop_region(img: Image.Image, box_pct) -> Image.Image:
     return img.crop(box_to_pixels(img, box_pct))
+
+
+def open_image(uploaded_file) -> Image.Image:
+    """Abre um arquivo enviado como imagem RGB (reposiciona o ponteiro de leitura)."""
+    uploaded_file.seek(0)
+    return Image.open(uploaded_file).convert("RGB")
 
 
 def to_excel_bytes(df: pd.DataFrame) -> bytes:
@@ -157,6 +163,20 @@ with st.sidebar:
             help="7 = uma linha de texto. 8 = uma palavra. Só afeta o Tesseract.",
         )
 
+        st.markdown("**Faixa plausível de temperatura**")
+        usar_faixa = st.checkbox(
+            "Ignorar valores fora da faixa", value=False,
+            help="Sinaliza/descarta leituras absurdas (ex.: 365 quando o certo é "
+            "~36,5 — erro comum de ponto decimal). Defina o intervalo esperado.",
+        )
+        if usar_faixa:
+            fc1, fc2 = st.columns(2)
+            min_val = fc1.number_input("Mínima", value=0.0, step=1.0)
+            max_val = fc2.number_input("Máxima", value=150.0, step=1.0)
+        else:
+            min_val = None
+            max_val = None
+
     st.divider()
     unit = st.radio("Unidade exibida", ["°C", "°F", "—"], horizontal=True, index=0)
 
@@ -193,7 +213,7 @@ st.write(f"**{len(files)} imagem(ns)** selecionada(s).")
 
 # Pré-visualização do recorte na primeira imagem.
 try:
-    first_img = Image.open(files[0]).convert("RGB")
+    first_img = open_image(files[0])
 except Exception:
     st.error("Não foi possível abrir a primeira imagem.")
     st.stop()
@@ -216,6 +236,65 @@ if not use_full:
 
 
 # --------------------------------------------------------------------------- #
+# Visualizador de uma imagem enviada
+# --------------------------------------------------------------------------- #
+with st.expander("🖼️ Visualizar / testar uma imagem específica"):
+    nomes = [f.name for f in files]
+    rotulos = [f"{i + 1}. {nome}" for i, nome in enumerate(nomes)]
+    idx = rotulos.index(
+        st.selectbox("Escolha a imagem", rotulos, key="visualizar_sel")
+    )
+    sel_img = open_image(files[idx])
+
+    vcol1, vcol2 = st.columns([3, 1])
+    with vcol1:
+        img_mostrar = sel_img if use_full else draw_region(sel_img, box_pct)
+        st.image(img_mostrar, caption=nomes[idx], use_container_width=True)
+    with vcol2:
+        if not use_full:
+            st.image(
+                crop_region(sel_img, box_pct),
+                caption="Recorte lido",
+                use_container_width=True,
+            )
+
+    # Mostra o que já foi lido para esta imagem (se o lote já rodou).
+    if "resultados" in st.session_state:
+        nome_sel = nomes[idx]
+        linha = st.session_state["resultados"].query("Arquivo == @nome_sel")
+        if not linha.empty:
+            r = linha.iloc[0]
+            st.write(
+                f"**Temperatura lida:** {r['Temperatura']} {r['Unidade']}  ·  "
+                f"**Status:** {r['Status']}"
+            )
+            st.caption(f"Texto bruto do OCR: `{r['Texto lido (OCR)']}`")
+
+    # Testa a leitura só nesta imagem, com as configurações atuais — útil para
+    # ajustar a região/zoom nas fotos que falharam, sem reprocessar o lote todo.
+    if st.button("🔍 Testar leitura nesta imagem", key="testar_uma"):
+        regiao_teste = sel_img if use_full else crop_region(sel_img, box_pct)
+        txt, vals = ocr.extract_temperature(
+            regiao_teste,
+            backend=backend,
+            psm=psm,
+            upscale=upscale,
+            try_both_polarities=try_both,
+            min_val=min_val,
+            max_val=max_val,
+        )
+        if vals:
+            extra = unit if unit != "—" else ""
+            st.success(f"Leu: **{vals[0]} {extra}**  ·  todos os valores: {vals}")
+        else:
+            st.warning(
+                "Não identifiquei número aqui. Tente aumentar a 'Ampliação' nas "
+                "opções avançadas, ajustar a região ou marcar 'texto claro e escuro'."
+            )
+        st.caption(f"Texto bruto do OCR: `{txt}`")
+
+
+# --------------------------------------------------------------------------- #
 # Processamento em lote
 # --------------------------------------------------------------------------- #
 if st.button("🔍 Ler temperaturas de todas as imagens", type="primary"):
@@ -225,7 +304,7 @@ if st.button("🔍 Ler temperaturas de todas as imagens", type="primary"):
 
     for i, f in enumerate(files, start=1):
         try:
-            img = Image.open(f).convert("RGB")
+            img = open_image(f)
             region = crop_region(img, box_pct)
             raw_text, values = ocr.extract_temperature(
                 region,
@@ -233,6 +312,8 @@ if st.button("🔍 Ler temperaturas de todas as imagens", type="primary"):
                 psm=psm,
                 upscale=upscale,
                 try_both_polarities=try_both,
+                min_val=min_val,
+                max_val=max_val,
             )
             principal = values[0] if values else None
             todos = ", ".join(str(v) for v in values) if values else ""
