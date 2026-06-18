@@ -1,0 +1,18 @@
+# Dependências para rodar LOCAL na sua máquina (sem instalar motor de sistema).
+# Usa o EasyOCR, que vem 100% via pip — ideal para notebook corporativo
+# sem permissão de instalar softwares.
+#
+# Como usar:
+#   1) Abra o terminal do VSCode na pasta do projeto
+#   2) (opcional) python -m venv .venv  e ative o ambiente
+#   3) pip install -r requirements-local.txt
+#   4) streamlit run app.py
+#
+# Obs.: na PRIMEIRA execução o EasyOCR baixa um modelo (~64 MB). Isso exige
+# internet só nessa primeira vez.
+streamlit>=1.36
+easyocr>=1.7.1
+Pillow>=10.0
+numpy>=1.26
+pandas>=2.0
+openpyxl>=3.1

@@ -1,0 +1,8 @@
+# Dependências para a NUVEM (Streamlit Cloud / Hugging Face Spaces).
+# O motor Tesseract em si é instalado pelo arquivo packages.txt (no servidor).
+streamlit>=1.36
+pytesseract>=0.3.10
+Pillow>=10.0
+numpy>=1.26
+pandas>=2.0
+openpyxl>=3.1
